@@ -1,0 +1,7 @@
+pydantic
+transformers
+nltk
+spacy
+matplotlib
+seaborn
+jupyterlab

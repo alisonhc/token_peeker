@@ -1,12 +1,12 @@
 from typing import Optional, Any
 import os
 from pydantic import BaseModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 import torch
 import nltk
 import spacy
 import logging
-from transformers import BitsAndBytesConfig
+
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
