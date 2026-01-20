@@ -112,11 +112,17 @@ def print_sentence(sentence: Sentence, show_values: bool = False, max_list_items
 
 
 class ModelOfLanguage:
-    def __init__(self, nickname:str = None, name: str = None):
+    def __init__(self, nickname:str = None, name: str = None, path: str = None):
         self.name = self.set_name(nickname, name)
+        # self.name = name
         self.nickname = self.set_nickname(nickname, name)
+        self.path = path
+        self.model_key = self.path if self.path else self.name
         print(f"Model nickname set to: {self.nickname}")
         print(f"Model name set to: {self.name}")
+        print(f"Local model path: {self.path}")
+        print(f"Model key set to {self.model_key}")
+
         self.model = self.load_model()
         self.tokenizer = self.load_tokenizer()
         
@@ -156,36 +162,36 @@ class ModelOfLanguage:
         pass
     
     def load_model(self):
-        try:
-            if self.name == "openai-community/gpt2":
-                model = AutoModelForCausalLM.from_pretrained(
-                    "openai-community/gpt2",
-                    device_map="auto",
-                )  
-            elif self.name == "mistralai/Mixtral-8x22B-v0.1":
-                model = AutoModelForCausalLM.from_pretrained(
-                    "mistralai/Mixtral-8x22B-v0.1", 
-                    load_in_4bit=True,
-                    device_map="auto"
-                )
-            else:
-                quantization_config = BitsAndBytesConfig(
-                    load_in_8bit=True,
-                )
-                model = AutoModelForCausalLM.from_pretrained(
-                    self.name,
-                    quantization_config=quantization_config,
-                    device_map="auto",
-                )
-        except ValueError:
-            raise ValueError(f"Model {self.name} not found")
+        # try:
+        if self.name == "openai-community/gpt2":
+            model = AutoModelForCausalLM.from_pretrained(
+                "openai-community/gpt2",
+                device_map="auto",
+            )  
+        elif self.name == "mistralai/Mixtral-8x22B-v0.1":
+            model = AutoModelForCausalLM.from_pretrained(
+                "mistralai/Mixtral-8x22B-v0.1", 
+                load_in_4bit=True,
+                device_map="auto"
+            )
+        else:
+            quantization_config = BitsAndBytesConfig(
+                load_in_8bit=True,
+            )
+            model = AutoModelForCausalLM.from_pretrained(
+                self.model_key,
+                quantization_config=quantization_config,
+                device_map="auto",
+            )
+        # except ValueError:
+        #     raise ValueError(f"Model {self.name} not found")
         return model
     
     def load_tokenizer(self):
         try:
-            tokenizer = AutoTokenizer.from_pretrained(self.name)
+            tokenizer = AutoTokenizer.from_pretrained(self.model_key)
         except ValueError:
-            raise ValueError(f"Model {self.name} not found")
+            raise ValueError(f"Model {self.model_key} not found")
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
         return tokenizer

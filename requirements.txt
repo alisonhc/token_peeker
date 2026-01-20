@@ -5,3 +5,6 @@ spacy
 matplotlib
 seaborn
 jupyterlab
+pytorch
+accelerate
+bitsandbytes
