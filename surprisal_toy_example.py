@@ -16,17 +16,22 @@ from utils.color_palette import *
 #         Intervention(text="very typical"),
 #     ]
 # )
+context_text = 'Josip and Roko are having a conversation about their friend Mattia. Josip: "Mattia raked leaves. And hey, guess what, the leaves were on the ground!"'
+target_framing = "In general, when Mattia rakes leaves, it is "
+full_context = " ".join([context_text, target_framing])
+
+target_text = " the leaves are on the ground."
 sentence = Sentence(
-    context='Mary went to her office. She worked. It is ', 
-    target=' that Mary works.', 
-    intervened_target=' that Mary works.',
+    context=full_context, 
+    target=target_text, 
+    intervened_target=target_text,
     interventions=[
         # Intervention(text="he had displayed genuine strokes of boldness two years ago"),
-        Intervention(text="very atypical"),
-        Intervention(text="somewhat atypical"),
-        Intervention(text="neither typical nor atypical"),
-        Intervention(text="somewhat typical"),
-        Intervention(text="very typical"),
+        Intervention(text="very unlikely that"),
+        Intervention(text="unlikely that"),
+        #Intervention(text="neither typical nor atypical"),
+        Intervention(text="likely that"),
+        Intervention(text="very likely that"),
     ]
 )
 
