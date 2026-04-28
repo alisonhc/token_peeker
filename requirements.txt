@@ -8,3 +8,4 @@ jupyterlab
 pytorch
 accelerate
 bitsandbytes
+jsonlines
