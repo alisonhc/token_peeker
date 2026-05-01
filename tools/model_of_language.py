@@ -141,12 +141,16 @@ class ModelOfLanguage:
             return "Qwen/Qwen3-8B-Base"
         elif nickname == "Qwen3-Instruct":
             return "Qwen/Qwen3-8B"
+        elif nickname == "Qwen3.5-9B-Base":
+            return "Qwen/Qwen3.5-9B-Base"
         elif nickname in ["Llama3.1", "Llama3.1-8B"]:
             return "meta-llama/Llama-3.1-8B"
         elif nickname in ["Llama3.1-Instruct"]:
             return "meta-llama/Llama-3.1-8B-Instruct"
         elif nickname in ["Mixtral8x22B", "8x22B"]:
             return "mistralai/Mixtral-8x22B-v0.1"
+        elif nickname == "gemma-3-12b":
+            return "google/gemma-3-12b-pt"
         else:
             raise ValueError(f"Model {nickname} not found")
 

@@ -4,6 +4,17 @@ import jsonlines as jsonl
 from tools.model_of_language import *
 from tools.variables import INTERVENTIONS, INTERVENTION_DICT
 
+"""
+python -m surprisal_script --model-name /public/hf/models/mistralai/Mistral-7B-v0.1 --model-nickname Mistral7B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_mistral7b_output.jsonl
+
+python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-Llama-3.1-8B --model-nickname Llama3.1-8B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_llam3.1_8b_output.jsonl
+
+python -m surprisal_script --model-name /public/hf/models/google/gemma-3-12b-pt --model-nickname gemma-3-12b --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_gemma3_12b_output.jsonl
+
+python -m surprisal_script --model-name /public/hf/models/Qwen/Qwen3.5-9B-Base --model-nickname Qwen3.5-9B-Base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_qwen3.5_9b_base_output.jsonl
+
+"""
+
 def run_inference(in_path, out_path, mol, batch_size=32):
     with jsonl.open(in_path, 'r') as reader:
         with jsonl.open(out_path, 'a') as writer:
@@ -68,3 +79,4 @@ if __name__ == "__main__":
                   out_path=args.out_path,
                   mol=model,
                   batch_size=args.batch_size)
+
