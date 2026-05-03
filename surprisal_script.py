@@ -9,9 +9,13 @@ python -m surprisal_script --model-name /public/hf/models/mistralai/Mistral-7B-v
 
 python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-Llama-3.1-8B --model-nickname Llama3.1-8B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_llam3.1_8b_output.jsonl
 
-python -m surprisal_script --model-name /public/hf/models/google/gemma-3-12b-pt --model-nickname gemma-3-12b --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_gemma3_12b_output.jsonl
+python -m surprisal_script --model-name /public/hf/models/google/gemma-3-12b-pt --model-nickname gemma-3-12b --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_gemma3_12b_vllm_output.jsonl
 
 python -m surprisal_script --model-name /public/hf/models/Qwen/Qwen3.5-9B-Base --model-nickname Qwen3.5-9B-Base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_qwen3.5_9b_base_output.jsonl
+
+python -m surprisal_script --model-name /public/hf/models/google/gemma-3-27b-pt --model-nickname gemma-3-27b --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_gemma3_27b_output.jsonl
+
+python -m surprisal_script --model-name allenai/Olmo-3-1025-7B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_olmo3_7b_output.jsonl
 
 """
 
@@ -66,14 +70,16 @@ if __name__ == "__main__":
     ap.add_argument("--model-name", required=False, default=None)
 
     # e.g. "Mistral7B"
-    ap.add_argument("--model-nickname", required=False, defaul=None)
-    ap.add_argument("--in-path", required=True)
+    ap.add_argument("--model-nickname", required=False, default=None)
+    ap.add_argument("--in-path", required=False, default=None)
     ap.add_argument("--out-path", required=True)
     ap.add_argument("--batch-size", type=int, default=32, help="Batch size for processing (default: 32)")
 
     args = ap.parse_args()
 
-    model = ModelOfLanguage(path=args.model_name, nickname=args.model_nickname)
+    model = ModelOfLanguage(nickname=args.model_nickname,
+                            name=args.model_name,
+                            use_vllm=False)
 
     run_inference(in_path=args.in_path,
                   out_path=args.out_path,
