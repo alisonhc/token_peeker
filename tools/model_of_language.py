@@ -170,6 +170,8 @@ class ModelOfLanguage:
             return "mistralai/Mixtral-8x22B-v0.1"
         elif nickname == "gemma-3-12b":
             return "google/gemma-3-12b-pt"
+        elif nickname == "gemma-3-27b":
+            return "google/gemma-3-27b-pt"
         else:
             raise ValueError(f"Model {nickname} not found")
 
