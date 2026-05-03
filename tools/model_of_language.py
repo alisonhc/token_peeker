@@ -256,7 +256,7 @@ class ModelOfLanguage:
     
     def get_measures_at_target_tokens(self, targets: list[str], contexts: list[str], n_relevant_tokens_from_last: int, original_intervention_index: int=0):
         # If using vLLM, delegate to the vLLM-specific implementation.
-        if self.use_vllm and getattr(self, "vllm", None) is not None:
+        if self.use_vllm:
             return self._get_measures_with_vllm(targets, contexts, n_relevant_tokens_from_last, original_intervention_index)
 
         inputs = [self.join_context_and_target(c,t) for c, t in zip(contexts, targets)]
@@ -324,6 +324,47 @@ class ModelOfLanguage:
 
         For now this raises `NotImplementedError` to keep behavior explicit.
         """
+        def _to_finite_float(value, default=None):
+            try:
+                f = float(value)
+            except Exception:
+                return default
+            if not math.isfinite(f):
+                return default
+            return f
+
+        def _sanitize_logprob_dict(entry):
+            if not isinstance(entry, dict):
+                return None
+            clean = {}
+            for k, v in entry.items():
+                fv = _to_finite_float(v, default=None)
+                if fv is None:
+                    continue
+                clean[k] = fv
+            if len(clean) == 0:
+                return None
+            max_log = max(clean.values())
+            exps = {}
+            for k, v in clean.items():
+                # Clamp exponent input to prevent overflow/underflow issues.
+                exps[k] = math.exp(max(-80.0, min(80.0, v - max_log)))
+            norm = sum(exps.values())
+            if norm <= 0.0 or not math.isfinite(norm):
+                return None
+            return {k: exps[k] / norm for k in exps}
+
+        def _lookup_token_logprob(entry, token_id):
+            if not isinstance(entry, dict):
+                return None
+            if token_id in entry:
+                return _to_finite_float(entry[token_id], default=None)
+            # Common mismatch: token keys may be strings.
+            token_id_str = str(token_id)
+            if token_id_str in entry:
+                return _to_finite_float(entry[token_id_str], default=None)
+            return None
+
         # Lazy-initialize vLLM engine if not already created
         if not VLLM_AVAILABLE:
             raise RuntimeError("vLLM is not available in this environment")
@@ -385,17 +426,13 @@ class ModelOfLanguage:
 
                     # If entry is a dict mapping token_id->logprob
                     if isinstance(entry, dict):
-                        # Convert logprobs to normalized probs
-                        # Numerical stable exponentiation
-                        max_log = max(entry.values()) if len(entry) > 0 else 0.0
-                        exps = {k: math.exp(v - max_log) for k, v in entry.items()}
-                        norm = sum(exps.values()) if len(exps) > 0 else 1.0
-                        dist = {k: exps[k] / norm for k in exps}
-                        logp_obs = entry.get(tid, None)
+                        dist = _sanitize_logprob_dict(entry)
+                        logp_obs = _lookup_token_logprob(entry, tid)
                     elif isinstance(entry, float) or isinstance(entry, int):
                         # If entry is a scalar, assume it's the logprob of the observed token
-                        logp_obs = float(entry)
-                        dist = {int(tid): math.exp(logp_obs)}
+                        logp_obs = _to_finite_float(entry, default=None)
+                        if logp_obs is not None:
+                            dist = {int(tid): 1.0}
                     else:
                         # Unknown entry format; attempt best-effort extraction
                         try:
@@ -404,11 +441,8 @@ class ModelOfLanguage:
                             if token_logprobs is not None:
                                 entry2 = token_logprobs[i]
                                 if isinstance(entry2, dict):
-                                    max_log = max(entry2.values()) if len(entry2) > 0 else 0.0
-                                    exps = {k: math.exp(v - max_log) for k, v in entry2.items()}
-                                    norm = sum(exps.values())
-                                    dist = {k: exps[k] / norm for k in exps}
-                                    logp_obs = entry2.get(tid, None)
+                                    dist = _sanitize_logprob_dict(entry2)
+                                    logp_obs = _lookup_token_logprob(entry2, tid)
                         except Exception:
                             dist = None
 
@@ -421,14 +455,12 @@ class ModelOfLanguage:
                         if comp_logprobs is not None and i < len(comp_logprobs):
                             val = comp_logprobs[i]
                             if isinstance(val, dict):
-                                max_log = max(val.values()) if len(val) > 0 else 0.0
-                                exps = {k: math.exp(v - max_log) for k, v in val.items()}
-                                norm = sum(exps.values())
-                                dist = {k: exps[k] / norm for k in exps}
-                                logp_obs = val.get(tid, None)
+                                dist = _sanitize_logprob_dict(val)
+                                logp_obs = _lookup_token_logprob(val, tid)
                             elif isinstance(val, float) or isinstance(val, int):
-                                logp_obs = float(val)
-                                dist = {int(tid): math.exp(logp_obs)}
+                                logp_obs = _to_finite_float(val, default=None)
+                                if logp_obs is not None:
+                                    dist = {int(tid): 1.0}
                     except Exception:
                         pass
 
@@ -438,8 +470,7 @@ class ModelOfLanguage:
                     logp_obs = math.log(1e-12)
                 if dist is None:
                     # represent degenerate distribution concentrated on the observed token
-                    prob = math.exp(logp_obs)
-                    dist = {int(tid): prob}
+                    dist = {int(tid): 1.0}
 
                 # Compute surprisal for this position (we'll shift later to align)
                 surprisal = -float(logp_obs)
@@ -447,8 +478,13 @@ class ModelOfLanguage:
                 # Compute entropy for this position from dist
                 entropy = 0.0
                 for p in dist.values():
-                    if p > 0.0:
+                    if p > 0.0 and math.isfinite(p):
                         entropy -= p * math.log(p)
+
+                if not math.isfinite(entropy):
+                    entropy = 0.0
+                if not math.isfinite(surprisal):
+                    surprisal = -math.log(1e-12)
 
                 entropies_pos.append(entropy)
                 surprisals_pos.append(surprisal)
@@ -482,9 +518,14 @@ class ModelOfLanguage:
                 q_dist = dists[pos]
                 kl = 0.0
                 for tok, p in p_dist.items():
+                    if not math.isfinite(p) or p <= 0.0:
+                        continue
                     q = q_dist.get(tok, eps)
+                    q = q if (math.isfinite(q) and q > 0.0) else eps
                     if p > 0.0:
                         kl += p * (math.log(p + eps) - math.log(q + eps))
+                if not math.isfinite(kl):
+                    kl = 0.0
                 kl_per_pos.append(kl)
             kl_divs_list.append(kl_per_pos)
 
