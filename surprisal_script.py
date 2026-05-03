@@ -9,13 +9,25 @@ python -m surprisal_script --model-name /public/hf/models/mistralai/Mistral-7B-v
 
 python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-Llama-3.1-8B --model-nickname Llama3.1-8B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_llam3.1_8b_output.jsonl
 
-python -m surprisal_script --model-name /public/hf/models/google/gemma-3-12b-pt --model-nickname gemma-3-12b --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_gemma3_12b_vllm_output.jsonl
+python -m surprisal_script --model-name /public/hf/models/google/gemma-3-12b-pt --model-nickname gemma-3-12b --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_gemma3_12b_vllm2_output.jsonl
 
 python -m surprisal_script --model-name /public/hf/models/Qwen/Qwen3.5-9B-Base --model-nickname Qwen3.5-9B-Base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_qwen3.5_9b_base_output.jsonl
 
 python -m surprisal_script --model-name /public/hf/models/google/gemma-3-27b-pt --model-nickname gemma-3-27b --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_gemma3_27b_output.jsonl
 
 python -m surprisal_script --model-name allenai/Olmo-3-1025-7B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_olmo3_7b_output.jsonl
+
+python -m surprisal_script --model-name allenai/Olmo-3-1125-32B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_olmo3_32b_output.jsonl
+
+python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-Llama-3.1-70B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_llama3.1_70b_output.jsonl
+
+python -m surprisal_script --model-name Qwen/Qwen3-8B-Base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_qwen3_8b_base_output.jsonl
+
+python -m surprisal_script --model-name Qwen/Qwen3-30B-A3B-Base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_qwen3_30b_base_output.jsonl
+
+python -m surprisal_script --model-name deepseek-ai/deepseek-llm-7b-base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_deepseek_llm_7b_base_output.jsonl
+
+python -m surprisal_script --model-name deepseek-ai/deepseek-llm-67b-base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_deepseek_llm_67b_base_output.jsonl
 
 """
 
@@ -77,7 +89,9 @@ if __name__ == "__main__":
 
     args = ap.parse_args()
 
-    model = ModelOfLanguage(nickname=args.model_nickname,
+    path_to_use = args.model_name if args.model_name and 'public' in args.model_name else None
+    model = ModelOfLanguage(path=path_to_use,
+                            nickname=args.model_nickname,
                             name=args.model_name,
                             use_vllm=False)
 
