@@ -9,3 +9,4 @@ pytorch
 accelerate
 bitsandbytes
 jsonlines
+vllm

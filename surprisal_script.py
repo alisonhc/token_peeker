@@ -63,10 +63,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Get surprisal values for input data")
 
     # eg '/public/hf/models/mistralai/Mistral-7B-v0.1'
-    ap.add_argument("--model-name", required=True)
+    ap.add_argument("--model-name", required=False, default=None)
 
     # e.g. "Mistral7B"
-    ap.add_argument("--model-nickname", required=True)
+    ap.add_argument("--model-nickname", required=False, defaul=None)
     ap.add_argument("--in-path", required=True)
     ap.add_argument("--out-path", required=True)
     ap.add_argument("--batch-size", type=int, default=32, help="Batch size for processing (default: 32)")

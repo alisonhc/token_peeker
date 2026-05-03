@@ -6,7 +6,16 @@ import torch
 import nltk
 import spacy
 import logging
+import math
 
+# Optional vLLM support (scaffolded). If vllm is installed, `VLLM_AVAILABLE` will be True.
+try:
+    from vllm import LLM, SamplingParams  # type: ignore
+    VLLM_AVAILABLE = True
+except Exception:
+    LLM = None  # type: ignore
+    SamplingParams = None  # type: ignore
+    VLLM_AVAILABLE = False
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
@@ -112,7 +121,7 @@ def print_sentence(sentence: Sentence, show_values: bool = False, max_list_items
 
 
 class ModelOfLanguage:
-    def __init__(self, nickname:str = None, name: str = None, path: str = None):
+    def __init__(self, nickname: str = None, name: str = None, path: str = None, use_vllm: bool = False):
         self.name = self.set_name(nickname, name)
         # self.name = name
         self.nickname = self.set_nickname(nickname, name)
@@ -123,6 +132,16 @@ class ModelOfLanguage:
         print(f"Local model path: {self.path}")
         print(f"Model key set to {self.model_key}")
 
+        # vLLM usage flag (optional)
+        self.use_vllm = use_vllm and VLLM_AVAILABLE
+        if use_vllm and not VLLM_AVAILABLE:
+            logging.warning("vLLM requested but not available; falling back to transformers")
+
+        # model objects: when using transformers `self.model` holds HF model;
+        # when using vllm, `self.vllm` will hold the vllm.LLM instance and
+        # `self.model` will be the HF model only as a fallback for parts
+        # of the code that still use transformers APIs.
+        self.vllm = None
         self.model = self.load_model()
         self.tokenizer = self.load_tokenizer()
         
@@ -201,7 +220,11 @@ class ModelOfLanguage:
         return tokenizer
     
     def get_activations(self, sentence: str):
-        pass
+        # Activation extraction for vLLM is different from HF transformers.
+        # This method is left as a compatibility stub; use
+        # `_get_hidden_states_for_context` or implement a vLLM-specific
+        # extraction if needed.
+        raise NotImplementedError("get_activations is not implemented for vLLM/stub")
     
     def get_hidden_states_for_context(self, context: str):
         with torch.no_grad():
@@ -232,6 +255,10 @@ class ModelOfLanguage:
         return torch.sum(probs_p * (logprobs_p - logprobs_q), dim=-1)
     
     def get_measures_at_target_tokens(self, targets: list[str], contexts: list[str], n_relevant_tokens_from_last: int, original_intervention_index: int=0):
+        # If using vLLM, delegate to the vLLM-specific implementation.
+        if self.use_vllm and getattr(self, "vllm", None) is not None:
+            return self._get_measures_with_vllm(targets, contexts, n_relevant_tokens_from_last, original_intervention_index)
+
         inputs = [self.join_context_and_target(c,t) for c, t in zip(contexts, targets)]
         token_ids = self.tokenizer(
             inputs, 
@@ -274,6 +301,207 @@ class ModelOfLanguage:
             )
             kl_divs_list.append(kl_divs.tolist())
         
+        return {
+            "entropy": entropies_list,
+            "surprisal": surprisals_list,
+            "kl_div": kl_divs_list,
+        }
+
+    def _get_measures_with_vllm(self, targets: list[str], contexts: list[str], n_relevant_tokens_from_last: int, original_intervention_index: int = 0):
+        """Scaffold for computing measures using vLLM.
+
+        vLLM exposes a different runtime API than Hugging Face transformers.
+        The implementation here is intentionally a scaffold: vLLM can return
+        per-token logits via the streaming/generation API and model outputs,
+        but the exact extraction depends on the vllm version and usage
+        pattern (e.g., `LLM.generate` and inspecting `response.output`).
+
+        If you want full vLLM support, implement this to:
+        - tokenize `contexts + targets` with the HF tokenizer or vLLM tokenizer
+        - run vLLM generation with a request to return logits/logprobs
+        - compute `probs`, `logprobs`, `entropies`, `surprisals`, and KL
+        - return the same dict shape as the transformers path
+
+        For now this raises `NotImplementedError` to keep behavior explicit.
+        """
+        # Lazy-initialize vLLM engine if not already created
+        if not VLLM_AVAILABLE:
+            raise RuntimeError("vLLM is not available in this environment")
+        if getattr(self, "vllm", None) is None:
+            # Default init; users can adjust if they want different engine args
+            self.vllm = LLM(model=self.model_key)
+
+        prompts = [self.join_context_and_target(c, t) for c, t in zip(contexts, targets)]
+
+        # Request prompt-only logprobs by setting max_tokens=0 and temperature=0 (deterministic)
+        sampling = SamplingParams(temperature=0.0)
+        outputs = self.vllm.generate(prompts, sampling_params=sampling, max_tokens=0)
+
+        # We'll build per-input lists of entropies and surprisals, and keep per-position distributions
+        all_entropies = []
+        all_surprisals = []
+        all_distributions = []  # list of list-of-dicts mapping token_id->prob for each position
+
+        for out in outputs:
+            # Extract prompt token ids and prompt logprobs if available
+            token_ids = None
+            prompt_logprobs = None
+            try:
+                token_ids = getattr(out, "prompt_token_ids", None)
+                prompt_logprobs = getattr(out, "prompt_logprobs", None)
+            except Exception:
+                token_ids = None
+                prompt_logprobs = None
+
+            # Fallback: try to inspect first completion output
+            if token_ids is None:
+                try:
+                    comp = out.outputs[0]
+                    token_ids = getattr(comp, "token_ids", None)
+                except Exception:
+                    token_ids = None
+
+            entropies_pos = []
+            surprisals_pos = []
+            dists_pos = []
+
+            if token_ids is None:
+                # Can't extract token-level measures; return empty lists
+                all_entropies.append([])
+                all_surprisals.append([])
+                all_distributions.append([])
+                continue
+
+            # Iterate positions and try to build a full distribution from prompt_logprobs
+            for i, tid in enumerate(token_ids):
+                logp_obs = None
+                dist = None
+
+                if prompt_logprobs is not None:
+                    try:
+                        entry = prompt_logprobs[i]
+                    except Exception:
+                        entry = None
+
+                    # If entry is a dict mapping token_id->logprob
+                    if isinstance(entry, dict):
+                        # Convert logprobs to normalized probs
+                        # Numerical stable exponentiation
+                        max_log = max(entry.values()) if len(entry) > 0 else 0.0
+                        exps = {k: math.exp(v - max_log) for k, v in entry.items()}
+                        norm = sum(exps.values()) if len(exps) > 0 else 1.0
+                        dist = {k: exps[k] / norm for k in exps}
+                        logp_obs = entry.get(tid, None)
+                    elif isinstance(entry, float) or isinstance(entry, int):
+                        # If entry is a scalar, assume it's the logprob of the observed token
+                        logp_obs = float(entry)
+                        dist = {int(tid): math.exp(logp_obs)}
+                    else:
+                        # Unknown entry format; attempt best-effort extraction
+                        try:
+                            # Some vLLM versions may expose token_logprobs as a list of (ids, logps)
+                            token_logprobs = getattr(prompt_logprobs, "token_logprobs", None)
+                            if token_logprobs is not None:
+                                entry2 = token_logprobs[i]
+                                if isinstance(entry2, dict):
+                                    max_log = max(entry2.values()) if len(entry2) > 0 else 0.0
+                                    exps = {k: math.exp(v - max_log) for k, v in entry2.items()}
+                                    norm = sum(exps.values())
+                                    dist = {k: exps[k] / norm for k in exps}
+                                    logp_obs = entry2.get(tid, None)
+                        except Exception:
+                            dist = None
+
+                # If we couldn't build a distribution, fall back to using any completion-level logprobs
+                if dist is None:
+                    # try completion outputs
+                    try:
+                        comp = out.outputs[0]
+                        comp_logprobs = getattr(comp, "logprobs", None) or getattr(comp, "token_logprobs", None)
+                        if comp_logprobs is not None and i < len(comp_logprobs):
+                            val = comp_logprobs[i]
+                            if isinstance(val, dict):
+                                max_log = max(val.values()) if len(val) > 0 else 0.0
+                                exps = {k: math.exp(v - max_log) for k, v in val.items()}
+                                norm = sum(exps.values())
+                                dist = {k: exps[k] / norm for k in exps}
+                                logp_obs = val.get(tid, None)
+                            elif isinstance(val, float) or isinstance(val, int):
+                                logp_obs = float(val)
+                                dist = {int(tid): math.exp(logp_obs)}
+                    except Exception:
+                        pass
+
+                # Final fallbacks
+                if logp_obs is None:
+                    # If still missing, set to a very small probability (log prob large negative)
+                    logp_obs = math.log(1e-12)
+                if dist is None:
+                    # represent degenerate distribution concentrated on the observed token
+                    prob = math.exp(logp_obs)
+                    dist = {int(tid): prob}
+
+                # Compute surprisal for this position (we'll shift later to align)
+                surprisal = -float(logp_obs)
+
+                # Compute entropy for this position from dist
+                entropy = 0.0
+                for p in dist.values():
+                    if p > 0.0:
+                        entropy -= p * math.log(p)
+
+                entropies_pos.append(entropy)
+                surprisals_pos.append(surprisal)
+                dists_pos.append(dist)
+
+            # Align entropies and surprisals like the transformers path: entropy at position i predicts token i+1
+            # So we drop the last entropy to align with surprisals (which are computed for tokens 1..L-1)
+            if len(entropies_pos) > 0:
+                entropies_shifted = entropies_pos[:-1]
+            else:
+                entropies_shifted = []
+
+            # surprisals: skip the first token because it has no preceding distribution
+            surprisals_aligned = surprisals_pos[1:] if len(surprisals_pos) > 1 else []
+
+            all_entropies.append(entropies_shifted)
+            all_surprisals.append(surprisals_aligned)
+            all_distributions.append(dists_pos)
+
+        # Now compute kl divergences per input relative to the original_intervention_index using the distributions we built
+        kl_divs_list = []
+        eps = 1e-12
+        ref_dists = all_distributions[original_intervention_index] if len(all_distributions) > original_intervention_index else []
+
+        for j, dists in enumerate(all_distributions):
+            kl_per_pos = []
+            # Compare positions up to the min length of ref & current (use shifted alignment: we used dists_pos as full prompt-level dists)
+            max_pos = min(len(ref_dists), len(dists))
+            for pos in range(max_pos):
+                p_dist = ref_dists[pos]
+                q_dist = dists[pos]
+                kl = 0.0
+                for tok, p in p_dist.items():
+                    q = q_dist.get(tok, eps)
+                    if p > 0.0:
+                        kl += p * (math.log(p + eps) - math.log(q + eps))
+                kl_per_pos.append(kl)
+            kl_divs_list.append(kl_per_pos)
+
+        # Trim/slice to keep only the last `n_relevant_tokens_from_last` positions, matching the transformers path behavior
+        def tail_slice(list_of_lists, n):
+            out = []
+            for lst in list_of_lists:
+                if not lst:
+                    out.append([])
+                    continue
+                out.append(lst[-n:])
+            return out
+
+        entropies_list = tail_slice(all_entropies, n_relevant_tokens_from_last)
+        surprisals_list = tail_slice(all_surprisals, n_relevant_tokens_from_last)
+        kl_divs_list = tail_slice(kl_divs_list, n_relevant_tokens_from_last)
+
         return {
             "entropy": entropies_list,
             "surprisal": surprisals_list,
