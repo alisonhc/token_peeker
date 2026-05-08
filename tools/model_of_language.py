@@ -333,7 +333,7 @@ class ModelOfLanguage:
         original_intervention_index: int = 0,
     ):
         inputs = [self.join_context_and_target(c, t) for c, t in zip(contexts, targets)]
-        print(inputs)
+        # print(inputs)
         batch = self.tokenizer(
             inputs,
             padding=True,
@@ -433,13 +433,10 @@ class ModelOfLanguage:
     def get_measures_for_sentence(self, sentence: Sentence):
         # Note added the target.strip() bc input data format
         targets = [sentence.target.strip()] + [self.join_context_and_target(i.text, sentence.intervened_target ) for i in sentence.interventions] if sentence.interventions else [sentence.target]
-        print(f"Targets: {targets}")
         contexts = [sentence.context] * len(targets)
         if sentence.measure_tokens is None:
             sentence.measure_tokens = self.get_common_tokens(sentence.target, sentence.intervened_target)
         sentence.first_token_after_root_from_right = self.get_root_token_position(sentence.target)
-        print("len sentence measure tokens", len(sentence.measure_tokens))
-
         measures = self.get_measures_at_target_tokens(
             targets=targets,
             contexts=contexts,
