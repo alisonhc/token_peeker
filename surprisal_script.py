@@ -29,6 +29,8 @@ python -m surprisal_script --model-name deepseek-ai/deepseek-llm-7b-base --in-pa
 
 python -m surprisal_script --model-name deepseek-ai/deepseek-llm-67b-base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_deepseek_llm_67b_base_output.jsonl
 
+python -m surprisal_script --model-name /public/hf/models/google/gemma-3-27b-pt --model-nickname gemma-3-27b --in-path data/input/pilot_llm_probleminput.jsonl --out-path data/output/pilot_gemma3_27b_debug1.jsonl
+
 """
 
 def run_inference(in_path, out_path, mol, batch_size=32):
@@ -62,12 +64,13 @@ def get_surprisal_values(obj, mol):
     to_update = {}
     for intervention in measures.interventions:
         txt = intervention.text
-        surprisal, ent, kl_div = intervention.measures["surprisal"], intervention.measures["entropy"], intervention.measures["kl_div"]
+        # surprisal, ent, kl_div = intervention.measures["surprisal"], intervention.measures["entropy"], intervention.measures["kl_div"]
+        surprisal = intervention.measures["surprisal"]
         toks = sentence.measure_tokens
         interv_key = INTERVENTION_DICT[txt]
         to_update[f"{interv_key}_surprisal"] = surprisal
-        to_update[f"{interv_key}_ent"] = ent
-        to_update[f"{interv_key}_kl_div"] = kl_div
+        # to_update[f"{interv_key}_ent"] = ent
+        # to_update[f"{interv_key}_kl_div"] = kl_div
         to_update[f"{interv_key}_toks"] = toks
     obj.update(to_update)
     return obj

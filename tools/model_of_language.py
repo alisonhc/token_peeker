@@ -85,15 +85,15 @@ class Sentence(BaseModel):
             tm = self.target_measures
             lines.append("- target_measures:")
 
-            lines.append(
-                f"  - entropy: {self._format_list(tm.get('entropy'), max_list_items)}"
-            )
+            # lines.append(
+            #     f"  - entropy: {self._format_list(tm.get('entropy'), max_list_items)}"
+            # )
             lines.append(
                 f"  - surprisal: {self._format_list(tm.get('surprisal'), max_list_items)}"
             )
-            lines.append(
-                f"  - kl_div: {self._format_list(tm.get('kl_div'), max_list_items)}"
-            )
+            # lines.append(
+            #     f"  - kl_div: {self._format_list(tm.get('kl_div'), max_list_items)}"
+            # )
         if self.interventions is not None and len(self.interventions) > 0:
             lines.append("- interventions:")
             for idx, intervention in enumerate(self.interventions):
@@ -101,15 +101,15 @@ class Sentence(BaseModel):
                 if intervention.measures:
             
                     lines.append(header)
-                    lines.append(
-                        f"    - entropy: {self._format_list(intervention.measures.get('entropy'), max_list_items)}"
-                    )
+                    # lines.append(
+                    #     f"    - entropy: {self._format_list(intervention.measures.get('entropy'), max_list_items)}"
+                    # )
                     lines.append(
                         f"    - surprisal: {self._format_list(intervention.measures.get('surprisal'), max_list_items)}"
                     )
-                    lines.append(
-                        f"    - kl_div: {self._format_list(intervention.measures.get('kl_div'), max_list_items)}"
-                    )
+                    # lines.append(
+                    #     f"    - kl_div: {self._format_list(intervention.measures.get('kl_div'), max_list_items)}"
+                    # )
         return "\n".join(lines)
 
     def __str__(self) -> str:  # Allows print(sentence)
@@ -207,6 +207,7 @@ class ModelOfLanguage:
                 self.model_key,
                 quantization_config=quantization_config,
                 device_map="auto",
+                dtype=torch.bfloat16
             )
         # except ValueError:
         #     raise ValueError(f"Model {self.name} not found")
@@ -249,307 +250,179 @@ class ModelOfLanguage:
         common_tokens.reverse()  # reverse to get the correct order
         return common_tokens
     
-    def join_context_and_target(self, context: str, target: str):
-        """Join context and target with a space, ensuring no leading or trailing spaces."""
-        return f"{context} {target}".strip()
+    def join_context_and_target(self, context: str, target: str) -> str:
+        return f"{context.rstrip()} {target.lstrip()}".strip()
     
     def kl_divergences(self, probs_p, logprobs_p: torch.Tensor, logprobs_q: torch.Tensor):
         return torch.sum(probs_p * (logprobs_p - logprobs_q), dim=-1)
     
-    def get_measures_at_target_tokens(self, targets: list[str], contexts: list[str], n_relevant_tokens_from_last: int, original_intervention_index: int=0):
-        # If using vLLM, delegate to the vLLM-specific implementation.
-        if self.use_vllm:
-            return self._get_measures_with_vllm(targets, contexts, n_relevant_tokens_from_last, original_intervention_index)
+    # def get_measures_at_target_tokens(self, targets, contexts, n_relevant_tokens_from_last, original_intervention_index=0):
+    #     inputs = [self.join_context_and_target(c, t) for c, t in zip(contexts, targets)]
 
-        inputs = [self.join_context_and_target(c,t) for c, t in zip(contexts, targets)]
-        token_ids = self.tokenizer(
-            inputs, 
+    #     batch = self.tokenizer(
+    #         inputs,
+    #         padding=True,
+    #         truncation=True,
+    #         padding_side="right",
+    #         max_length=1024,
+    #         return_tensors="pt"
+    #     ).to(self.model.device)
+
+    #     with torch.no_grad():
+    #         outputs = self.model(**batch)
+    #     print(self.model.dtype)
+    #     # Diagnostics
+    #     if not torch.isfinite(outputs.logits).all():
+    #         print("WARNING: non-finite logits detected")
+
+    #     input_ids = batch.input_ids
+    #     attn = batch.attention_mask
+
+    #     logits = outputs.logits.float()
+    #     logprobs = torch.nn.functional.log_softmax(logits, dim=-1)
+
+    #     target_ids = input_ids[:, 1:]
+    #     logprobs_aligned = logprobs[:, :-1, :]
+
+    #     surprisals = -logprobs_aligned.gather(-1, target_ids.unsqueeze(-1)).squeeze(-1)
+
+    #     valid_mask = attn[:, 1:].bool()
+    #     surprisals = surprisals.masked_fill(~valid_mask, float("nan"))
+
+    #     lengths = attn.sum(dim=-1)
+
+    #     surprisals_list = []
+    #     for b in range(surprisals.size(0)):
+    #         L = int(lengths[b].item())
+    #         end = L - 1
+    #         start = max(0, end - n_relevant_tokens_from_last)
+    #         surprisals_list.append(surprisals[b, start:end].tolist())
+    #     # entropies have to be shifted by 1 to the left, becasue in the surprisals, from the distribution on the first token we derive the surprisal of the second token, but this is done by passing token_ids.input_ids[:, 1:]. in the case of the entropy, we need to do this shift afterwards
+    #     # entropies_list = [
+    #     #     e[-n_relevant_tokens_from_last+i-1:i-1].tolist() if i != 0 else e[-n_relevant_tokens_from_last-1:-1].tolist() for i, e in zip(last_relevant_token, entropies)
+    #     # ]
+        
+    #     # kl divergences wrt to the first sentence
+    #     # kl_divs_list = []
+    #     # # print(f"last_relevant_token: {last_relevant_token}")
+    #     # for j, i in enumerate(last_relevant_token):
+    #     #     # KL(P,Q), P the true distribution, Q the wrong distribution
+    #     #     kl_divs = self.kl_divergences(
+    #     #         # original quantifier intervention probs
+    #     #         probs[original_intervention_index][-n_relevant_tokens_from_last+last_relevant_token[original_intervention_index]-1:last_relevant_token[original_intervention_index]-1,:],
+    #     #         logprobs[original_intervention_index][-n_relevant_tokens_from_last+last_relevant_token[original_intervention_index]-1:last_relevant_token[original_intervention_index]-1,:],
+                
+    #     #         # wrong quantifier 
+    #     #         logprobs[j][-n_relevant_tokens_from_last+i-1:i-1,:] if i != 0 else logprobs[j][-n_relevant_tokens_from_last-1:-1,:],
+    #     #     )
+    #     #     kl_divs_list.append(kl_divs.tolist())
+        
+    #     # return {
+    #     #     "entropy": entropies_list,
+    #     #     "surprisal": surprisals_list,
+    #     #     "kl_div": kl_divs_list,
+    #     # }
+    #     return {"surprisal": surprisals_list}
+
+
+    def get_measures_at_target_tokens(
+        self,
+        targets: list[str],
+        contexts: list[str],
+        n_relevant_tokens_from_last: int,
+        original_intervention_index: int = 0,
+    ):
+        inputs = [self.join_context_and_target(c, t) for c, t in zip(contexts, targets)]
+        print(inputs)
+        batch = self.tokenizer(
+            inputs,
             padding=True,
             truncation=True,
             padding_side="right",
             max_length=1024,
-            return_tensors="pt"
+            return_tensors="pt",
         ).to(self.model.device)
-        
+
         with torch.no_grad():
-            outputs = self.model(**token_ids)
+            outputs = self.model(**batch)
+
+        input_ids = batch.input_ids
+        attn = batch.attention_mask
+        lengths = attn.sum(dim=-1)  # (B,) number of non-pad tokens
+
+        # log_softmax in fp32 is a good idea even in bf16
+        logprobs = torch.nn.functional.log_softmax(outputs.logits.float(), dim=-1)
+
+        # Proper next-token alignment
+        logprobs_aligned = logprobs[:, :-1, :]   # (B, T-1, V)
+        target_ids = input_ids[:, 1:]            # (B, T-1)
+
+        surprisals = -logprobs_aligned.gather(-1, target_ids.unsqueeze(-1)).squeeze(-1)  # (B, T-1)
+
+        # Now extract the last n relevant surprisals within the *true* length
+        surprisals_list = []
+        for b in range(surprisals.size(0)):
+            L = int(lengths[b].item())
+            end = L - 1  # surprisals are defined for targets 1..L-1 -> length L-1
+            start = max(0, end - n_relevant_tokens_from_last)
+            surprisals_list.append(surprisals[b, start:end].tolist())
+        # print(len(surprisals_list)) # should be 4
+        return {"surprisal": surprisals_list}
+
+
+    # def get_measures_at_target_tokens(self, targets: list[str], contexts: list[str], n_relevant_tokens_from_last: int, original_intervention_index: int=0):
+    #     # If using vLLM, delegate to the vLLM-specific implementation.
+    #     if self.use_vllm:
+    #         return self._get_measures_with_vllm(targets, contexts, n_relevant_tokens_from_last, original_intervention_index)
+
+    #     inputs = [self.join_context_and_target(c,t) for c, t in zip(contexts, targets)]
+    #     token_ids = self.tokenizer(
+    #         inputs, 
+    #         padding=True,
+    #         truncation=True,
+    #         padding_side="right",
+    #         max_length=1024,
+    #         return_tensors="pt"
+    #     ).to(self.model.device)
+
+    #     with torch.no_grad():
+    #         outputs = self.model(**token_ids)
             
-        probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-        logprobs = torch.nn.functional.log_softmax(outputs.logits, dim=-1)
-        entropies = -torch.sum(probs * logprobs, dim=-1)
-        surprisals = -logprobs.gather(-1, token_ids.input_ids[:, 1:].unsqueeze(-1)).squeeze(-1)
-        last_relevant_token = torch.sum(token_ids.attention_mask, dim=-1) - len(token_ids.input_ids[0])
-        surprisals_list = [s[-n_relevant_tokens_from_last+i:i].tolist() if i != 0 else s[-n_relevant_tokens_from_last:].tolist() for i, s in zip(last_relevant_token, surprisals)]
+    #     probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+    #     logprobs = torch.nn.functional.log_softmax(outputs.logits, dim=-1)
+    #     # entropies = -torch.sum(probs * logprobs, dim=-1)
+    #     surprisals = -logprobs.gather(-1, token_ids.input_ids[:, 1:].unsqueeze(-1)).squeeze(-1)
+    #     last_relevant_token = torch.sum(token_ids.attention_mask, dim=-1) - len(token_ids.input_ids[0])
+    #     surprisals_list = [s[-n_relevant_tokens_from_last+i:i].tolist() if i != 0 else s[-n_relevant_tokens_from_last:].tolist() for i, s in zip(last_relevant_token, surprisals)]
     
         
         
-        # entropies have to be shifted by 1 to the left, becasue in the surprisals, from the distribution on the first token we derive the surprisal of the second token, but this is done by passing token_ids.input_ids[:, 1:]. in the case of the entropy, we need to do this shift afterwards
-        entropies_list = [
-            e[-n_relevant_tokens_from_last+i-1:i-1].tolist() if i != 0 else e[-n_relevant_tokens_from_last-1:-1].tolist() for i, e in zip(last_relevant_token, entropies)
-        ]
+    #     # # entropies have to be shifted by 1 to the left, becasue in the surprisals, from the distribution on the first token we derive the surprisal of the second token, but this is done by passing token_ids.input_ids[:, 1:]. in the case of the entropy, we need to do this shift afterwards
+    #     # entropies_list = [
+    #     #     e[-n_relevant_tokens_from_last+i-1:i-1].tolist() if i != 0 else e[-n_relevant_tokens_from_last-1:-1].tolist() for i, e in zip(last_relevant_token, entropies)
+    #     # ]
         
-        # kl divergences wrt to the first sentence
-        kl_divs_list = []
-        # print(f"last_relevant_token: {last_relevant_token}")
-        for j, i in enumerate(last_relevant_token):
-            # KL(P,Q), P the true distribution, Q the wrong distribution
-            kl_divs = self.kl_divergences(
-                # original quantifier intervention probs
-                probs[original_intervention_index][-n_relevant_tokens_from_last+last_relevant_token[original_intervention_index]-1:last_relevant_token[original_intervention_index]-1,:],
-                logprobs[original_intervention_index][-n_relevant_tokens_from_last+last_relevant_token[original_intervention_index]-1:last_relevant_token[original_intervention_index]-1,:],
+    #     # # kl divergences wrt to the first sentence
+    #     # kl_divs_list = []
+    #     # # print(f"last_relevant_token: {last_relevant_token}")
+    #     # for j, i in enumerate(last_relevant_token):
+    #     #     # KL(P,Q), P the true distribution, Q the wrong distribution
+    #     #     kl_divs = self.kl_divergences(
+    #     #         # original quantifier intervention probs
+    #     #         probs[original_intervention_index][-n_relevant_tokens_from_last+last_relevant_token[original_intervention_index]-1:last_relevant_token[original_intervention_index]-1,:],
+    #     #         logprobs[original_intervention_index][-n_relevant_tokens_from_last+last_relevant_token[original_intervention_index]-1:last_relevant_token[original_intervention_index]-1,:],
                 
-                # wrong quantifier 
-                logprobs[j][-n_relevant_tokens_from_last+i-1:i-1,:] if i != 0 else logprobs[j][-n_relevant_tokens_from_last-1:-1,:],
-            )
-            kl_divs_list.append(kl_divs.tolist())
+    #     #         # wrong quantifier 
+    #     #         logprobs[j][-n_relevant_tokens_from_last+i-1:i-1,:] if i != 0 else logprobs[j][-n_relevant_tokens_from_last-1:-1,:],
+    #     #     )
+    #     #     kl_divs_list.append(kl_divs.tolist())
         
-        return {
-            "entropy": entropies_list,
-            "surprisal": surprisals_list,
-            "kl_div": kl_divs_list,
-        }
+    #     return {
+    #         # "entropy": entropies_list,
+    #         "surprisal": surprisals_list,
+    #         # "kl_div": kl_divs_list,
+    #     }
 
-    def _get_measures_with_vllm(self, targets: list[str], contexts: list[str], n_relevant_tokens_from_last: int, original_intervention_index: int = 0):
-        """Scaffold for computing measures using vLLM.
-
-        vLLM exposes a different runtime API than Hugging Face transformers.
-        The implementation here is intentionally a scaffold: vLLM can return
-        per-token logits via the streaming/generation API and model outputs,
-        but the exact extraction depends on the vllm version and usage
-        pattern (e.g., `LLM.generate` and inspecting `response.output`).
-
-        If you want full vLLM support, implement this to:
-        - tokenize `contexts + targets` with the HF tokenizer or vLLM tokenizer
-        - run vLLM generation with a request to return logits/logprobs
-        - compute `probs`, `logprobs`, `entropies`, `surprisals`, and KL
-        - return the same dict shape as the transformers path
-
-        For now this raises `NotImplementedError` to keep behavior explicit.
-        """
-        def _to_finite_float(value, default=None):
-            try:
-                f = float(value)
-            except Exception:
-                return default
-            if not math.isfinite(f):
-                return default
-            return f
-
-        def _sanitize_logprob_dict(entry):
-            if not isinstance(entry, dict):
-                return None
-            clean = {}
-            for k, v in entry.items():
-                fv = _to_finite_float(v, default=None)
-                if fv is None:
-                    continue
-                clean[k] = fv
-            if len(clean) == 0:
-                return None
-            max_log = max(clean.values())
-            exps = {}
-            for k, v in clean.items():
-                # Clamp exponent input to prevent overflow/underflow issues.
-                exps[k] = math.exp(max(-80.0, min(80.0, v - max_log)))
-            norm = sum(exps.values())
-            if norm <= 0.0 or not math.isfinite(norm):
-                return None
-            return {k: exps[k] / norm for k in exps}
-
-        def _lookup_token_logprob(entry, token_id):
-            if not isinstance(entry, dict):
-                return None
-            if token_id in entry:
-                return _to_finite_float(entry[token_id], default=None)
-            # Common mismatch: token keys may be strings.
-            token_id_str = str(token_id)
-            if token_id_str in entry:
-                return _to_finite_float(entry[token_id_str], default=None)
-            return None
-
-        # Lazy-initialize vLLM engine if not already created
-        if not VLLM_AVAILABLE:
-            raise RuntimeError("vLLM is not available in this environment")
-        if getattr(self, "vllm", None) is None:
-            # Default init; users can adjust if they want different engine args
-            self.vllm = LLM(model=self.model_key)
-
-        prompts = [self.join_context_and_target(c, t) for c, t in zip(contexts, targets)]
-
-        # Request prompt-only logprobs by setting max_tokens=0 and temperature=0 (deterministic)
-        sampling = SamplingParams(temperature=0.0)
-        outputs = self.vllm.generate(prompts, sampling_params=sampling, max_tokens=0)
-
-        # We'll build per-input lists of entropies and surprisals, and keep per-position distributions
-        all_entropies = []
-        all_surprisals = []
-        all_distributions = []  # list of list-of-dicts mapping token_id->prob for each position
-
-        for out in outputs:
-            # Extract prompt token ids and prompt logprobs if available
-            token_ids = None
-            prompt_logprobs = None
-            try:
-                token_ids = getattr(out, "prompt_token_ids", None)
-                prompt_logprobs = getattr(out, "prompt_logprobs", None)
-            except Exception:
-                token_ids = None
-                prompt_logprobs = None
-
-            # Fallback: try to inspect first completion output
-            if token_ids is None:
-                try:
-                    comp = out.outputs[0]
-                    token_ids = getattr(comp, "token_ids", None)
-                except Exception:
-                    token_ids = None
-
-            entropies_pos = []
-            surprisals_pos = []
-            dists_pos = []
-
-            if token_ids is None:
-                # Can't extract token-level measures; return empty lists
-                all_entropies.append([])
-                all_surprisals.append([])
-                all_distributions.append([])
-                continue
-
-            # Iterate positions and try to build a full distribution from prompt_logprobs
-            for i, tid in enumerate(token_ids):
-                logp_obs = None
-                dist = None
-
-                if prompt_logprobs is not None:
-                    try:
-                        entry = prompt_logprobs[i]
-                    except Exception:
-                        entry = None
-
-                    # If entry is a dict mapping token_id->logprob
-                    if isinstance(entry, dict):
-                        dist = _sanitize_logprob_dict(entry)
-                        logp_obs = _lookup_token_logprob(entry, tid)
-                    elif isinstance(entry, float) or isinstance(entry, int):
-                        # If entry is a scalar, assume it's the logprob of the observed token
-                        logp_obs = _to_finite_float(entry, default=None)
-                        if logp_obs is not None:
-                            dist = {int(tid): 1.0}
-                    else:
-                        # Unknown entry format; attempt best-effort extraction
-                        try:
-                            # Some vLLM versions may expose token_logprobs as a list of (ids, logps)
-                            token_logprobs = getattr(prompt_logprobs, "token_logprobs", None)
-                            if token_logprobs is not None:
-                                entry2 = token_logprobs[i]
-                                if isinstance(entry2, dict):
-                                    dist = _sanitize_logprob_dict(entry2)
-                                    logp_obs = _lookup_token_logprob(entry2, tid)
-                        except Exception:
-                            dist = None
-
-                # If we couldn't build a distribution, fall back to using any completion-level logprobs
-                if dist is None:
-                    # try completion outputs
-                    try:
-                        comp = out.outputs[0]
-                        comp_logprobs = getattr(comp, "logprobs", None) or getattr(comp, "token_logprobs", None)
-                        if comp_logprobs is not None and i < len(comp_logprobs):
-                            val = comp_logprobs[i]
-                            if isinstance(val, dict):
-                                dist = _sanitize_logprob_dict(val)
-                                logp_obs = _lookup_token_logprob(val, tid)
-                            elif isinstance(val, float) or isinstance(val, int):
-                                logp_obs = _to_finite_float(val, default=None)
-                                if logp_obs is not None:
-                                    dist = {int(tid): 1.0}
-                    except Exception:
-                        pass
-
-                # Final fallbacks
-                if logp_obs is None:
-                    # If still missing, set to a very small probability (log prob large negative)
-                    logp_obs = math.log(1e-12)
-                if dist is None:
-                    # represent degenerate distribution concentrated on the observed token
-                    dist = {int(tid): 1.0}
-
-                # Compute surprisal for this position (we'll shift later to align)
-                surprisal = -float(logp_obs)
-
-                # Compute entropy for this position from dist
-                entropy = 0.0
-                for p in dist.values():
-                    if p > 0.0 and math.isfinite(p):
-                        entropy -= p * math.log(p)
-
-                if not math.isfinite(entropy):
-                    entropy = 0.0
-                if not math.isfinite(surprisal):
-                    surprisal = -math.log(1e-12)
-
-                entropies_pos.append(entropy)
-                surprisals_pos.append(surprisal)
-                dists_pos.append(dist)
-
-            # Align entropies and surprisals like the transformers path: entropy at position i predicts token i+1
-            # So we drop the last entropy to align with surprisals (which are computed for tokens 1..L-1)
-            if len(entropies_pos) > 0:
-                entropies_shifted = entropies_pos[:-1]
-            else:
-                entropies_shifted = []
-
-            # surprisals: skip the first token because it has no preceding distribution
-            surprisals_aligned = surprisals_pos[1:] if len(surprisals_pos) > 1 else []
-
-            all_entropies.append(entropies_shifted)
-            all_surprisals.append(surprisals_aligned)
-            all_distributions.append(dists_pos)
-
-        # Now compute kl divergences per input relative to the original_intervention_index using the distributions we built
-        kl_divs_list = []
-        eps = 1e-12
-        ref_dists = all_distributions[original_intervention_index] if len(all_distributions) > original_intervention_index else []
-
-        for j, dists in enumerate(all_distributions):
-            kl_per_pos = []
-            # Compare positions up to the min length of ref & current (use shifted alignment: we used dists_pos as full prompt-level dists)
-            max_pos = min(len(ref_dists), len(dists))
-            for pos in range(max_pos):
-                p_dist = ref_dists[pos]
-                q_dist = dists[pos]
-                kl = 0.0
-                for tok, p in p_dist.items():
-                    if not math.isfinite(p) or p <= 0.0:
-                        continue
-                    q = q_dist.get(tok, eps)
-                    q = q if (math.isfinite(q) and q > 0.0) else eps
-                    if p > 0.0:
-                        kl += p * (math.log(p + eps) - math.log(q + eps))
-                if not math.isfinite(kl):
-                    kl = 0.0
-                kl_per_pos.append(kl)
-            kl_divs_list.append(kl_per_pos)
-
-        # Trim/slice to keep only the last `n_relevant_tokens_from_last` positions, matching the transformers path behavior
-        def tail_slice(list_of_lists, n):
-            out = []
-            for lst in list_of_lists:
-                if not lst:
-                    out.append([])
-                    continue
-                out.append(lst[-n:])
-            return out
-
-        entropies_list = tail_slice(all_entropies, n_relevant_tokens_from_last)
-        surprisals_list = tail_slice(all_surprisals, n_relevant_tokens_from_last)
-        kl_divs_list = tail_slice(kl_divs_list, n_relevant_tokens_from_last)
-
-        return {
-            "entropy": entropies_list,
-            "surprisal": surprisals_list,
-            "kl_div": kl_divs_list,
-        }
         
     def pointwise_list_subtraction(self, list_a, list_b):
         return [a - b for a, b in zip(list_a, list_b)]
@@ -557,13 +430,16 @@ class ModelOfLanguage:
     def mean(self, list_a):
         return sum(list_a)/len(list_a)
         
-    def get_measures_for_sentence(self, sentence:Sentence):
-        targets = [sentence.target] + [self.join_context_and_target(i.text, sentence.intervened_target ) for i in sentence.interventions] if sentence.interventions else [sentence.target]
-        # print(f"Targets: {targets}")
+    def get_measures_for_sentence(self, sentence: Sentence):
+        # Note added the target.strip() bc input data format
+        targets = [sentence.target.strip()] + [self.join_context_and_target(i.text, sentence.intervened_target ) for i in sentence.interventions] if sentence.interventions else [sentence.target]
+        print(f"Targets: {targets}")
         contexts = [sentence.context] * len(targets)
         if sentence.measure_tokens is None:
             sentence.measure_tokens = self.get_common_tokens(sentence.target, sentence.intervened_target)
         sentence.first_token_after_root_from_right = self.get_root_token_position(sentence.target)
+        print("len sentence measure tokens", len(sentence.measure_tokens))
+
         measures = self.get_measures_at_target_tokens(
             targets=targets,
             contexts=contexts,
@@ -571,17 +447,11 @@ class ModelOfLanguage:
             original_intervention_index=sentence.original_intervention_index
         )
         sentence.target_measures = {
-            "entropy": measures["entropy"][0],
             "surprisal": measures["surprisal"][0],
-            "kl_div": measures["kl_div"][0],
-            "typicality": self.mean(measures["surprisal"][0])-self.mean(measures["entropy"][0])
         }
         for i, intervention in enumerate(sentence.interventions):
             intervention.measures = {
-                "entropy": measures["entropy"][i+1],
                 "surprisal": measures["surprisal"][i+1],
-                "kl_div": measures["kl_div"][i+1],
-                "typicality": self.mean(measures["surprisal"][i+1])-self.mean(measures["entropy"][i+1])
             }
         return sentence
     
