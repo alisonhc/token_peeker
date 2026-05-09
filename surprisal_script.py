@@ -5,31 +5,26 @@ from tools.model_of_language import *
 from tools.variables import INTERVENTIONS, INTERVENTION_DICT
 
 """
-python -m surprisal_script --model-name /public/hf/models/mistralai/Mistral-7B-v0.1 --model-nickname Mistral7B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_mistral7b_output.jsonl
 
-python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-Llama-3.1-8B --model-nickname Llama3.1-8B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_llam3.1_8b_output.jsonl
+nohup python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-Llama-3.1-8B --model-nickname Llama3.1-8B --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_llama3.1_8b_output.jsonl > llama_8b_450.out &!
 
-python -m surprisal_script --model-name /public/hf/models/google/gemma-3-12b-pt --model-nickname gemma-3-12b --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_gemma3_12b_vllm2_output.jsonl
+nohup python -m surprisal_script --model-name /public/hf/models/google/gemma-3-12b-pt --model-nickname gemma-3-12b --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_gemma3_12b_output.jsonl
 
-python -m surprisal_script --model-name /public/hf/models/Qwen/Qwen3.5-9B-Base --model-nickname Qwen3.5-9B-Base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_qwen3.5_9b_base_output.jsonl
+python -m surprisal_script --model-name /public/hf/models/google/gemma-3-27b-pt --model-nickname gemma-3-27b --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_gemma3_27b_output.jsonl
 
-python -m surprisal_script --model-name /public/hf/models/google/gemma-3-27b-pt --model-nickname gemma-3-27b --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_gemma3_27b_output.jsonl
+python -m surprisal_script --model-name allenai/Olmo-3-1025-7B --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_olmo3_7b_output.jsonl
 
-python -m surprisal_script --model-name allenai/Olmo-3-1025-7B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_olmo3_7b_output.jsonl
+python -m surprisal_script --model-name allenai/Olmo-3-1125-32B --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_olmo3_32b_output.jsonl
 
-python -m surprisal_script --model-name allenai/Olmo-3-1125-32B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_olmo3_32b_output.jsonl
+python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-Llama-3.1-70B --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_llama3.1_70b_output.jsonl
 
-python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-Llama-3.1-70B --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_llama3.1_70b_output.jsonl
+nohup python -m surprisal_script --model-name Qwen/Qwen3-8B-Base --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_qwen3_8b_base_output.jsonl
 
-python -m surprisal_script --model-name Qwen/Qwen3-8B-Base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_qwen3_8b_base_output.jsonl
+python -m surprisal_script --model-name Qwen/Qwen3-30B-A3B-Base --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_qwen3_30b_base_output.jsonl
 
-python -m surprisal_script --model-name Qwen/Qwen3-30B-A3B-Base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_qwen3_30b_base_output.jsonl
+python -m surprisal_script --model-name deepseek-ai/deepseek-llm-7b-base --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_deepseek_llm_7b_base_output.jsonl
 
-python -m surprisal_script --model-name deepseek-ai/deepseek-llm-7b-base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_deepseek_llm_7b_base_output.jsonl
-
-python -m surprisal_script --model-name deepseek-ai/deepseek-llm-67b-base --in-path data/input/pilot_llm_input.jsonl --out-path data/output/pilot_deepseek_llm_67b_base_output.jsonl
-
-python -m surprisal_script --model-name /public/hf/models/google/gemma-3-27b-pt --model-nickname gemma-3-27b --in-path data/input/pilot_llm_probleminput.jsonl --out-path data/output/pilot_gemma3_27b_debug1.jsonl
+python -m surprisal_script --model-name deepseek-ai/deepseek-llm-67b-base --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_deepseek_llm_67b_base_output.jsonl
 
 """
 
