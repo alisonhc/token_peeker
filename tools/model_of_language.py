@@ -6,7 +6,6 @@ import torch
 import nltk
 import spacy
 import logging
-import math
 
 try:
     nlp = spacy.load("en_core_web_sm")
@@ -220,7 +219,7 @@ class ModelOfLanguage:
         targets: list[str],
         contexts: list[str],
         n_relevant_tokens_from_last: int,
-        original_intervention_index: int = 0,
+        original_intervention_index: int = 0,  # this param isn't used
     ):
         inputs = [self.join_context_and_target(c, t) for c, t in zip(contexts, targets)]
         print(inputs)
@@ -294,20 +293,17 @@ class ModelOfLanguage:
         )
 
         min_distance = float("inf")
-        min_distance_i = -1
         root_token = ""
         root_token_position = -1
 
         for i, token in enumerate(tokenizer_tokens):
             distance = nltk.edit_distance(token.replace("▁", "").replace("Ġ",""), root_word)
             if distance == 0:
-                min_distance_i = i
                 min_distance = distance
                 root_token = token
                 root_token_position = i
                 break
             elif distance < min_distance:
-                min_distance_i = i
                 min_distance = distance
                 root_token = token
                 root_token_position = i
