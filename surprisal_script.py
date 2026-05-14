@@ -10,21 +10,21 @@ nohup python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-
 
 nohup python -m surprisal_script --model-name /public/hf/models/google/gemma-3-12b-pt --model-nickname gemma-3-12b --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_gemma3_12b_output.jsonl
 
-python -m surprisal_script --model-name /public/hf/models/google/gemma-3-27b-pt --model-nickname gemma-3-27b --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_gemma3_27b_output.jsonl
+nohup python -m surprisal_script --model-name /public/hf/models/google/gemma-3-27b-pt --model-nickname gemma-3-27b --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_gemma3_27b_output.jsonl
 
-python -m surprisal_script --model-name allenai/Olmo-3-1025-7B --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_olmo3_7b_output.jsonl
+nohup python -m surprisal_script --model-name allenai/Olmo-3-1025-7B --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_olmo3_7b_output.jsonl
 
-python -m surprisal_script --model-name allenai/Olmo-3-1125-32B --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_olmo3_32b_output.jsonl
+nohup python -m surprisal_script --model-name allenai/Olmo-3-1125-32B --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_olmo3_32b_output.jsonl
 
-python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-Llama-3.1-70B --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_llama3.1_70b_output.jsonl
+nohup python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-Llama-3.1-70B --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_llama3.1_70b_output.jsonl
 
 nohup python -m surprisal_script --model-name Qwen/Qwen3-8B-Base --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_qwen3_8b_base_output.jsonl
 
-python -m surprisal_script --model-name Qwen/Qwen3-30B-A3B-Base --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_qwen3_30b_base_output.jsonl
+nohup python -m surprisal_script --model-name Qwen/Qwen3-30B-A3B-Base --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_qwen3_30b_base_output.jsonl
 
-python -m surprisal_script --model-name deepseek-ai/deepseek-llm-7b-base --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_deepseek_llm_7b_base_output.jsonl
+nohup python -m surprisal_script --model-name deepseek-ai/deepseek-llm-7b-base --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_deepseek_llm_7b_base_output.jsonl
 
-python -m surprisal_script --model-name deepseek-ai/deepseek-llm-67b-base --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_deepseek_llm_67b_base_output.jsonl
+nohup python -m surprisal_script --model-name deepseek-ai/deepseek-llm-67b-base --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_deepseek_llm_67b_base_output.jsonl
 
 """
 

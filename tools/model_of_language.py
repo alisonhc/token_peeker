@@ -8,14 +8,6 @@ import spacy
 import logging
 import math
 
-# Optional vLLM support (scaffolded). If vllm is installed, `VLLM_AVAILABLE` will be True.
-try:
-    from vllm import LLM, SamplingParams  # type: ignore
-    VLLM_AVAILABLE = True
-except Exception:
-    LLM = None  # type: ignore
-    SamplingParams = None  # type: ignore
-    VLLM_AVAILABLE = False
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
@@ -84,16 +76,9 @@ class Sentence(BaseModel):
         if self.target_measures is not None:
             tm = self.target_measures
             lines.append("- target_measures:")
-
-            # lines.append(
-            #     f"  - entropy: {self._format_list(tm.get('entropy'), max_list_items)}"
-            # )
             lines.append(
                 f"  - surprisal: {self._format_list(tm.get('surprisal'), max_list_items)}"
             )
-            # lines.append(
-            #     f"  - kl_div: {self._format_list(tm.get('kl_div'), max_list_items)}"
-            # )
         if self.interventions is not None and len(self.interventions) > 0:
             lines.append("- interventions:")
             for idx, intervention in enumerate(self.interventions):
@@ -101,15 +86,9 @@ class Sentence(BaseModel):
                 if intervention.measures:
             
                     lines.append(header)
-                    # lines.append(
-                    #     f"    - entropy: {self._format_list(intervention.measures.get('entropy'), max_list_items)}"
-                    # )
                     lines.append(
                         f"    - surprisal: {self._format_list(intervention.measures.get('surprisal'), max_list_items)}"
                     )
-                    # lines.append(
-                    #     f"    - kl_div: {self._format_list(intervention.measures.get('kl_div'), max_list_items)}"
-                    # )
         return "\n".join(lines)
 
     def __str__(self) -> str:  # Allows print(sentence)
@@ -121,7 +100,7 @@ def print_sentence(sentence: Sentence, show_values: bool = False, max_list_items
 
 
 class ModelOfLanguage:
-    def __init__(self, nickname: str = None, name: str = None, path: str = None, use_vllm: bool = False):
+    def __init__(self, nickname: str = None, name: str = None, path: str = None):
         self.name = self.set_name(nickname, name)
         # self.name = name
         self.nickname = self.set_nickname(nickname, name)
@@ -132,16 +111,6 @@ class ModelOfLanguage:
         print(f"Local model path: {self.path}")
         print(f"Model key set to {self.model_key}")
 
-        # vLLM usage flag (optional)
-        self.use_vllm = use_vllm and VLLM_AVAILABLE
-        if use_vllm and not VLLM_AVAILABLE:
-            logging.warning("vLLM requested but not available; falling back to transformers")
-
-        # model objects: when using transformers `self.model` holds HF model;
-        # when using vllm, `self.vllm` will hold the vllm.LLM instance and
-        # `self.model` will be the HF model only as a fallback for parts
-        # of the code that still use transformers APIs.
-        self.vllm = None
         self.model = self.load_model()
         self.tokenizer = self.load_tokenizer()
         
@@ -222,13 +191,6 @@ class ModelOfLanguage:
             tokenizer.pad_token = tokenizer.eos_token
         return tokenizer
     
-    def get_activations(self, sentence: str):
-        # Activation extraction for vLLM is different from HF transformers.
-        # This method is left as a compatibility stub; use
-        # `_get_hidden_states_for_context` or implement a vLLM-specific
-        # extraction if needed.
-        raise NotImplementedError("get_activations is not implemented for vLLM/stub")
-    
     def get_hidden_states_for_context(self, context: str):
         with torch.no_grad():
             tokens = self.tokenizer(context, return_tensors="pt")
@@ -253,78 +215,6 @@ class ModelOfLanguage:
     def join_context_and_target(self, context: str, target: str) -> str:
         return f"{context.rstrip()} {target.lstrip()}".strip()
     
-    def kl_divergences(self, probs_p, logprobs_p: torch.Tensor, logprobs_q: torch.Tensor):
-        return torch.sum(probs_p * (logprobs_p - logprobs_q), dim=-1)
-    
-    # def get_measures_at_target_tokens(self, targets, contexts, n_relevant_tokens_from_last, original_intervention_index=0):
-    #     inputs = [self.join_context_and_target(c, t) for c, t in zip(contexts, targets)]
-
-    #     batch = self.tokenizer(
-    #         inputs,
-    #         padding=True,
-    #         truncation=True,
-    #         padding_side="right",
-    #         max_length=1024,
-    #         return_tensors="pt"
-    #     ).to(self.model.device)
-
-    #     with torch.no_grad():
-    #         outputs = self.model(**batch)
-    #     print(self.model.dtype)
-    #     # Diagnostics
-    #     if not torch.isfinite(outputs.logits).all():
-    #         print("WARNING: non-finite logits detected")
-
-    #     input_ids = batch.input_ids
-    #     attn = batch.attention_mask
-
-    #     logits = outputs.logits.float()
-    #     logprobs = torch.nn.functional.log_softmax(logits, dim=-1)
-
-    #     target_ids = input_ids[:, 1:]
-    #     logprobs_aligned = logprobs[:, :-1, :]
-
-    #     surprisals = -logprobs_aligned.gather(-1, target_ids.unsqueeze(-1)).squeeze(-1)
-
-    #     valid_mask = attn[:, 1:].bool()
-    #     surprisals = surprisals.masked_fill(~valid_mask, float("nan"))
-
-    #     lengths = attn.sum(dim=-1)
-
-    #     surprisals_list = []
-    #     for b in range(surprisals.size(0)):
-    #         L = int(lengths[b].item())
-    #         end = L - 1
-    #         start = max(0, end - n_relevant_tokens_from_last)
-    #         surprisals_list.append(surprisals[b, start:end].tolist())
-    #     # entropies have to be shifted by 1 to the left, becasue in the surprisals, from the distribution on the first token we derive the surprisal of the second token, but this is done by passing token_ids.input_ids[:, 1:]. in the case of the entropy, we need to do this shift afterwards
-    #     # entropies_list = [
-    #     #     e[-n_relevant_tokens_from_last+i-1:i-1].tolist() if i != 0 else e[-n_relevant_tokens_from_last-1:-1].tolist() for i, e in zip(last_relevant_token, entropies)
-    #     # ]
-        
-    #     # kl divergences wrt to the first sentence
-    #     # kl_divs_list = []
-    #     # # print(f"last_relevant_token: {last_relevant_token}")
-    #     # for j, i in enumerate(last_relevant_token):
-    #     #     # KL(P,Q), P the true distribution, Q the wrong distribution
-    #     #     kl_divs = self.kl_divergences(
-    #     #         # original quantifier intervention probs
-    #     #         probs[original_intervention_index][-n_relevant_tokens_from_last+last_relevant_token[original_intervention_index]-1:last_relevant_token[original_intervention_index]-1,:],
-    #     #         logprobs[original_intervention_index][-n_relevant_tokens_from_last+last_relevant_token[original_intervention_index]-1:last_relevant_token[original_intervention_index]-1,:],
-                
-    #     #         # wrong quantifier 
-    #     #         logprobs[j][-n_relevant_tokens_from_last+i-1:i-1,:] if i != 0 else logprobs[j][-n_relevant_tokens_from_last-1:-1,:],
-    #     #     )
-    #     #     kl_divs_list.append(kl_divs.tolist())
-        
-    #     # return {
-    #     #     "entropy": entropies_list,
-    #     #     "surprisal": surprisals_list,
-    #     #     "kl_div": kl_divs_list,
-    #     # }
-    #     return {"surprisal": surprisals_list}
-
-
     def get_measures_at_target_tokens(
         self,
         targets: list[str],
@@ -367,60 +257,6 @@ class ModelOfLanguage:
             surprisals_list.append(surprisals[b, start:end].tolist())
         # print(len(surprisals_list)) # should be 4
         return {"surprisal": surprisals_list}
-
-
-    # def get_measures_at_target_tokens(self, targets: list[str], contexts: list[str], n_relevant_tokens_from_last: int, original_intervention_index: int=0):
-    #     # If using vLLM, delegate to the vLLM-specific implementation.
-    #     if self.use_vllm:
-    #         return self._get_measures_with_vllm(targets, contexts, n_relevant_tokens_from_last, original_intervention_index)
-
-    #     inputs = [self.join_context_and_target(c,t) for c, t in zip(contexts, targets)]
-    #     token_ids = self.tokenizer(
-    #         inputs, 
-    #         padding=True,
-    #         truncation=True,
-    #         padding_side="right",
-    #         max_length=1024,
-    #         return_tensors="pt"
-    #     ).to(self.model.device)
-
-    #     with torch.no_grad():
-    #         outputs = self.model(**token_ids)
-            
-    #     probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-    #     logprobs = torch.nn.functional.log_softmax(outputs.logits, dim=-1)
-    #     # entropies = -torch.sum(probs * logprobs, dim=-1)
-    #     surprisals = -logprobs.gather(-1, token_ids.input_ids[:, 1:].unsqueeze(-1)).squeeze(-1)
-    #     last_relevant_token = torch.sum(token_ids.attention_mask, dim=-1) - len(token_ids.input_ids[0])
-    #     surprisals_list = [s[-n_relevant_tokens_from_last+i:i].tolist() if i != 0 else s[-n_relevant_tokens_from_last:].tolist() for i, s in zip(last_relevant_token, surprisals)]
-    
-        
-        
-    #     # # entropies have to be shifted by 1 to the left, becasue in the surprisals, from the distribution on the first token we derive the surprisal of the second token, but this is done by passing token_ids.input_ids[:, 1:]. in the case of the entropy, we need to do this shift afterwards
-    #     # entropies_list = [
-    #     #     e[-n_relevant_tokens_from_last+i-1:i-1].tolist() if i != 0 else e[-n_relevant_tokens_from_last-1:-1].tolist() for i, e in zip(last_relevant_token, entropies)
-    #     # ]
-        
-    #     # # kl divergences wrt to the first sentence
-    #     # kl_divs_list = []
-    #     # # print(f"last_relevant_token: {last_relevant_token}")
-    #     # for j, i in enumerate(last_relevant_token):
-    #     #     # KL(P,Q), P the true distribution, Q the wrong distribution
-    #     #     kl_divs = self.kl_divergences(
-    #     #         # original quantifier intervention probs
-    #     #         probs[original_intervention_index][-n_relevant_tokens_from_last+last_relevant_token[original_intervention_index]-1:last_relevant_token[original_intervention_index]-1,:],
-    #     #         logprobs[original_intervention_index][-n_relevant_tokens_from_last+last_relevant_token[original_intervention_index]-1:last_relevant_token[original_intervention_index]-1,:],
-                
-    #     #         # wrong quantifier 
-    #     #         logprobs[j][-n_relevant_tokens_from_last+i-1:i-1,:] if i != 0 else logprobs[j][-n_relevant_tokens_from_last-1:-1,:],
-    #     #     )
-    #     #     kl_divs_list.append(kl_divs.tolist())
-        
-    #     return {
-    #         # "entropy": entropies_list,
-    #         "surprisal": surprisals_list,
-    #         # "kl_div": kl_divs_list,
-    #     }
 
         
     def pointwise_list_subtraction(self, list_a, list_b):
