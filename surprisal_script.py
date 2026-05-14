@@ -59,13 +59,10 @@ def get_surprisal_values(obj, mol):
     to_update = {}
     for intervention in measures.interventions:
         txt = intervention.text
-        # surprisal, ent, kl_div = intervention.measures["surprisal"], intervention.measures["entropy"], intervention.measures["kl_div"]
         surprisal = intervention.measures["surprisal"]
         toks = sentence.measure_tokens
         interv_key = INTERVENTION_DICT[txt]
         to_update[f"{interv_key}_surprisal"] = surprisal
-        # to_update[f"{interv_key}_ent"] = ent
-        # to_update[f"{interv_key}_kl_div"] = kl_div
         to_update[f"{interv_key}_toks"] = toks
     obj.update(to_update)
     return obj
@@ -90,8 +87,7 @@ if __name__ == "__main__":
     path_to_use = args.model_name if args.model_name and 'public' in args.model_name else None
     model = ModelOfLanguage(path=path_to_use,
                             nickname=args.model_nickname,
-                            name=args.model_name,
-                            use_vllm=False)
+                            name=args.model_name)
 
     run_inference(in_path=args.in_path,
                   out_path=args.out_path,

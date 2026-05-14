@@ -223,6 +223,7 @@ class ModelOfLanguage:
         original_intervention_index: int = 0,
     ):
         inputs = [self.join_context_and_target(c, t) for c, t in zip(contexts, targets)]
+        print(inputs)
         batch = self.tokenizer(
             inputs,
             padding=True,
@@ -257,13 +258,6 @@ class ModelOfLanguage:
             surprisals_list.append(surprisals[b, start:end].tolist())
         # print(len(surprisals_list)) # should be 4
         return {"surprisal": surprisals_list}
-
-        
-    def pointwise_list_subtraction(self, list_a, list_b):
-        return [a - b for a, b in zip(list_a, list_b)]
-    
-    def mean(self, list_a):
-        return sum(list_a)/len(list_a)
         
     def get_measures_for_sentence(self, sentence: Sentence):
         # Note added the target.strip() bc input data format
@@ -294,7 +288,6 @@ class ModelOfLanguage:
             if len([token for token in doc if token.dep_ == "ROOT"]) > 0
             else None
         )
-
 
         tokenizer_tokens = self.tokenizer.convert_ids_to_tokens(
             [t for t in self.tokenizer(text)["input_ids"] if t not in [self.tokenizer.pad_token_id, self.tokenizer.bos_token_id]]
