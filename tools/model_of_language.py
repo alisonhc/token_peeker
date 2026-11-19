@@ -223,7 +223,7 @@ class ModelOfLanguage:
         original_intervention_index: int = 0,
     ):
         inputs = [self.join_context_and_target(c, t) for c, t in zip(contexts, targets)]
-        print(inputs)
+        # print(inputs)
         batch = self.tokenizer(
             inputs,
             padding=True,
