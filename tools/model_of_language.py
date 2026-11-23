@@ -3,16 +3,24 @@ import os
 from pydantic import BaseModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 import torch
-import nltk
-import spacy
 import logging
 
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    logging.info("Downloading spaCy model...")
-    os.system("python -m spacy download en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
+# spaCy is only needed for get_root_token_position, so it is loaded on first use
+# (the vLLM environment does not need spacy/nltk installed).
+_nlp = None
+
+
+def get_nlp():
+    global _nlp
+    if _nlp is None:
+        import spacy
+        try:
+            _nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            logging.info("Downloading spaCy model...")
+            os.system("python -m spacy download en_core_web_sm")
+            _nlp = spacy.load("en_core_web_sm")
+    return _nlp
 
 
 
@@ -99,7 +107,11 @@ def print_sentence(sentence: Sentence, show_values: bool = False, max_list_items
 
 
 class ModelOfLanguage:
-    def __init__(self, nickname: str = None, name: str = None, path: str = None):
+    backend = "hf"
+
+    def __init__(self, nickname: str = None, name: str = None, path: str = None,
+                 load_in_8bit: bool = True):
+        self.load_in_8bit = load_in_8bit
         self.name = self.set_name(nickname, name)
         # self.name = name
         self.nickname = self.set_nickname(nickname, name)
@@ -168,9 +180,11 @@ class ModelOfLanguage:
                 device_map="auto"
             )
         else:
+            # 8-bit (bitsandbytes) by default; load_in_8bit=False loads plain bf16 weights,
+            # which is what the vLLM backend uses.
             quantization_config = BitsAndBytesConfig(
                 load_in_8bit=True,
-            )
+            ) if self.load_in_8bit else None
             model = AutoModelForCausalLM.from_pretrained(
                 self.model_key,
                 quantization_config=quantization_config,
@@ -279,9 +293,14 @@ class ModelOfLanguage:
                 "surprisal": measures["surprisal"][i+1],
             }
         return sentence
-    
+
+    def get_measures_for_sentences(self, sentences: list[Sentence]) -> list[Sentence]:
+        # One sentence at a time; the vLLM backend overrides this to score them all at once.
+        return [self.get_measures_for_sentence(s) for s in sentences]
+
     def get_root_token_position(self,text):
-        doc = nlp(text)
+        import nltk
+        doc = get_nlp()(text)
         root_word = (
             [token for token in doc if token.dep_ == "ROOT"][0].text
             if len([token for token in doc if token.dep_ == "ROOT"]) > 0
