@@ -6,7 +6,7 @@ from functools import lru_cache
 import jsonlines as jsonl
 import torch
 
-from tools.load_model import add_model_args, load_model
+from tools.load_model import add_model_args, exit_cleanly, load_model
 from forced_choice.restricted import constrained_surprisals, renormalized_surprisals
 from forced_choice.variables import (
     CHOICE_JOINER,
@@ -254,7 +254,8 @@ def check_prompt_scale(prompt: str, scale: str):
 
 
 def get_surprisal_values(objs, mol, max_length=2048, chat_template=False,
-                         system_prompt=SYSTEM_PROMPT, enable_thinking=False, scale=DEFAULT_SCALE):
+                         system_prompt=SYSTEM_PROMPT, enable_thinking=False, scale=DEFAULT_SCALE,
+                         choice_joiner=CHOICE_JOINER):
     """Score every answer choice for every object in `objs` in one forward pass."""
     ANSWER_CHOICES = get_answer_choices(scale)
     ANSWER_CHOICE_DICT = get_answer_choice_dict(scale)
@@ -267,7 +268,7 @@ def get_surprisal_values(objs, mol, max_length=2048, chat_template=False,
 
     # flat list of (prompt, choice) pairs: len(objs) * len(ANSWER_CHOICES) sequences
     batch_prompts = [p for p in full_prompts for _ in ANSWER_CHOICES]
-    batch_choices = [f"{CHOICE_JOINER}{choice}" for _ in objs for choice in ANSWER_CHOICES]
+    batch_choices = [f"{choice_joiner}{choice}" for _ in objs for choice in ANSWER_CHOICES]
 
     # a chat template already contains the model's BOS token, so don't let the
     # tokenizer add a second one
@@ -276,7 +277,7 @@ def get_surprisal_values(objs, mol, max_length=2048, chat_template=False,
 
     n_choices = len(ANSWER_CHOICES)
     for i, obj in enumerate(objs):
-        to_update = {"full_prompt": full_prompts[i], "answer_scale": scale}
+        to_update = {"full_prompt": full_prompts[i], "answer_scale": scale, "choice_joiner": choice_joiner}
         for j, choice in enumerate(ANSWER_CHOICES):
             toks, surprisal = results[i * n_choices + j]
             choice_key = ANSWER_CHOICE_DICT[choice]
@@ -285,7 +286,7 @@ def get_surprisal_values(objs, mol, max_length=2048, chat_template=False,
             to_update[f"{choice_key}_toks"] = toks
             to_update[f"{choice_key}_sum_surprisal"] = sum(surprisal)
             to_update[f"{choice_key}_mean_surprisal"] = sum(surprisal) / len(surprisal) if surprisal else None
-        mergeable = any(choice_merges_with_prompt(mol.tokenizer, full_prompts[i], f"{CHOICE_JOINER}{c}",
+        mergeable = any(choice_merges_with_prompt(mol.tokenizer, full_prompts[i], f"{choice_joiner}{c}",
                                                   add_special_tokens=not chat_template)
                         for c in ANSWER_CHOICES)
         if mergeable:
@@ -296,36 +297,54 @@ def get_surprisal_values(objs, mol, max_length=2048, chat_template=False,
     return objs
 
 
-def check_thinking_block(mol, chat_template: bool, system_prompt: str, enable_thinking: bool):
-    """Warn if the generation prompt ends inside an unclosed thinking block.
+# (opening, closing) markers of a model's thinking block. A prompt that ends with more openings
+# than closings would have the answer choices scored as the start of the model's reasoning.
+THINKING_MARKERS = [
+    ("<think>", "</think>"),          # Qwen3, Olmo-3-Think, DeepSeek-V4
+    ("<|channel>", "<channel|>"),     # Gemma 4: thinking off ends with "<|channel>thought\n<channel|>"
+]
+
+
+def check_thinking_block(mol, chat_template: bool, system_prompt: str, enable_thinking: bool,
+                         scale: str = DEFAULT_SCALE):
+    """Stop if the generation prompt ends inside an unclosed thinking block, and print the end
+    of a rendered prompt so the run log shows what the answer choices are scored after.
 
     Not every template honours enable_thinking: Olmo-3-*-Think, for one, hardcodes a
     trailing '<think>' and ignores the flag, so the answer choices would be scored as
     the opening tokens of the model's reasoning rather than as its answer.
     """
-    if not chat_template or enable_thinking:
+    if not chat_template:
         return
-    probe = build_prompt("probe", tokenizer=mol.tokenizer, chat_template=True,
-                         system_prompt=system_prompt, enable_thinking=False)
-    if probe.count("<think>") > probe.count("</think>"):
-        print(f"WARNING: {mol.nickname} opens a thinking block that enable_thinking=False did not "
-              f"close, so its prompt ends with {probe[-40:]!r}. The answer choices will be scored "
-              f"as the first tokens of the model's reasoning, not as its answer, and are not "
-              f"comparable to the other models. Consider an -Instruct variant instead.")
+    probe = build_prompt(f"how {scale} is it that this is a probe?", tokenizer=mol.tokenizer,
+                         chat_template=True, system_prompt=system_prompt,
+                         enable_thinking=enable_thinking, scale=scale)
+    print(f"Rendered prompt ends with: {probe[-160:]!r}")
+    if enable_thinking:
+        return
+    for opening, closing in THINKING_MARKERS:
+        if probe.count(opening) > probe.count(closing):
+            raise ValueError(
+                f"{mol.nickname} opens a thinking block ({opening!r}) that enable_thinking=False did "
+                f"not close, so the answer choices would be scored as the first tokens of the "
+                f"model's reasoning, not as its answer. Consider an -Instruct variant, or pass "
+                f"--enable-thinking to score it like that on purpose.")
 
 
 def run_inference(in_path, out_path, mol, batch_size=8, max_length=2048, chat_template=False,
-                  system_prompt=SYSTEM_PROMPT, enable_thinking=False, scale=DEFAULT_SCALE):
+                  system_prompt=SYSTEM_PROMPT, enable_thinking=False, scale=DEFAULT_SCALE,
+                  choice_joiner=CHOICE_JOINER):
     if (chat_template and getattr(mol.tokenizer, "chat_template", None) is None
             and get_custom_encoder(mol.tokenizer) is None):
         raise ValueError(f"--chat-template was passed but {mol.name} has no chat template "
                          "or prompt encoder (is it a base model?)")
-    check_thinking_block(mol, chat_template, system_prompt, enable_thinking)
+    check_thinking_block(mol, chat_template, system_prompt, enable_thinking, scale)
     out_dir = os.path.dirname(out_path)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
     kwargs = dict(max_length=max_length, chat_template=chat_template,
-                  system_prompt=system_prompt, enable_thinking=enable_thinking, scale=scale)
+                  system_prompt=system_prompt, enable_thinking=enable_thinking, scale=scale,
+                  choice_joiner=choice_joiner)
     with jsonl.open(in_path, 'r') as reader:
         with jsonl.open(out_path, 'a') as writer:
             batch = []
@@ -358,6 +377,10 @@ if __name__ == "__main__":
                     help=f"System message, held constant across models. Only used with "
                          f"--chat-template. Pass \"\" to leave it out and let each chat template "
                          f"supply its own default (default: {SYSTEM_PROMPT!r})")
+    ap.add_argument("--choice-joiner", default=CHOICE_JOINER,
+                    help="Text between the end of the prompt and each answer choice (default: "
+                         f"{CHOICE_JOINER!r}). Use \" \" for a template whose prompt ends without "
+                         "whitespace, e.g. deepseek-llm-7b-chat's 'Assistant:'")
     ap.add_argument("--scale", choices=list(SCALES), default=DEFAULT_SCALE,
                     help=f"Answer options to offer and score; must match the question in the "
                          f"prompts, e.g. 'how often is it that' -> often (default: {DEFAULT_SCALE})")
@@ -377,4 +400,6 @@ if __name__ == "__main__":
                   chat_template=args.chat_template,
                   system_prompt=args.system_prompt,
                   enable_thinking=args.enable_thinking,
-                  scale=args.scale)
+                  scale=args.scale,
+                  choice_joiner=args.choice_joiner)
+    exit_cleanly(model)

@@ -2,7 +2,7 @@ import argparse
 import jsonlines as jsonl
 
 from tools.model_of_language import *
-from tools.load_model import add_model_args, load_model
+from tools.load_model import add_model_args, exit_cleanly, load_model
 from tools.variables import SCALES, DEFAULT_SCALE, get_interventions, get_intervention_dict
 
 """
@@ -11,7 +11,7 @@ Add --backend vllm (plus e.g. --tensor-parallel-size 4 --batch-size 1000) to sco
 of transformers. To compare the two on the same weights, run the HF backend with --no-load-in-8bit.
 
 Use --scale {likely,typical,probable,often} to choose the intervention scale (default: likely), e.g.
-nohup python -m surprisal_script --model-name Qwen/Qwen3-8B-Base --scale typical --in-path data/input/for_llm_inference/mainexp_input_forsurprisal.jsonl --out-path data/output/mainexp_qwen3_8b_base_typical.jsonl
+nohup python -m surprisal_script --model-name Qwen/Qwen3-8B-Base --scale typical --in-path data/input/for_llm_inference/mainexp_input_forbasemodels.jsonl --out-path data/output/mainexp_qwen3_8b_base_typical.jsonl
 
 nohup python -m surprisal_script --model-name /public/hf/models/meta-llama/Meta-Llama-3.1-8B --model-nickname Llama3.1-8B --in-path data/input/450_llm_input_forsurprisal.jsonl --out-path data/output/450_llama3.1_8b_output.jsonl > llama_8b_450.out &!
 
@@ -114,3 +114,4 @@ if __name__ == "__main__":
                   mol=model,
                   batch_size=args.batch_size,
                   scale=args.scale)
+    exit_cleanly(model)

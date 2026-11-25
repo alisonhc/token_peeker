@@ -36,7 +36,11 @@ CHOICE_KEYS = [1, 2, 3, 4]
 
 def choice_labels(row) -> dict:
     """Label per key, from the file ({k}_choice, written by forced_choice_script.py for its
-    --scale). surprisal_script.py output has none, so fall back to the "likely" labels."""
+    --scale). surprisal_script.py output has none: use the interventions of its
+    intervention_scale, or the "likely" labels for files written before that field existed."""
+    if "intervention_scale" in row:
+        from tools.variables import get_interventions
+        return dict(zip(CHOICE_KEYS, get_interventions(row["intervention_scale"])))
     return {k: row.get(f"{k}_choice", ANSWER_CHOICES[k - 1]) for k in CHOICE_KEYS}
 
 

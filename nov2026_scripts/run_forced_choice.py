@@ -1,6 +1,6 @@
 """Run forced choice on every instruct input file with one model, then postprocess each output.
 
-Loads the model once and, for every *.jsonl in --in-dir except the *_forsurprisal* (base-model)
+Loads the model once and, for every *.jsonl in --in-dir except the *_forbasemodels* (base-model)
 files:
   1. scores the four answer choices with forced_choice_script.py (chat template / model encoder,
      thinking off), offering the answer options of the scale in the file name
@@ -31,8 +31,8 @@ import sys
 
 from forced_choice import postprocess
 from forced_choice.forced_choice_script import run_inference
-from forced_choice.variables import SCALES, SYSTEM_PROMPT
-from tools.load_model import add_model_args, load_model
+from forced_choice.variables import CHOICE_JOINER, SCALES, SYSTEM_PROMPT
+from tools.load_model import add_model_args, exit_cleanly, load_model
 
 
 def count_lines(path: str) -> int:
@@ -49,7 +49,7 @@ def scale_from_name(path: str) -> str:
 
 
 def find_inputs(in_dir: str, only: list[str] | None) -> list[str]:
-    paths = sorted(p for p in glob.glob(os.path.join(in_dir, "*.jsonl")) if "forsurprisal" not in p)
+    paths = sorted(p for p in glob.glob(os.path.join(in_dir, "*.jsonl")) if "forbasemodels" not in p)
     if only:
         paths = [p for p in paths if os.path.basename(p) in only or os.path.splitext(os.path.basename(p))[0] in only]
         missing = set(only) - {os.path.basename(p) for p in paths} - {os.path.splitext(os.path.basename(p))[0] for p in paths}
@@ -80,6 +80,9 @@ def main():
     ap.add_argument("--batch-size", type=int, default=500)
     ap.add_argument("--max-length", type=int, default=2048)
     ap.add_argument("--system-prompt", default=SYSTEM_PROMPT)
+    ap.add_argument("--choice-joiner", default=CHOICE_JOINER,
+                    help=f"Text between the prompt and each answer choice (default: {CHOICE_JOINER!r}); "
+                         "\" \" for templates whose prompt ends without whitespace")
     ap.add_argument("--enable-thinking", action="store_true",
                     help="Leave the thinking block open (default: thinking off)")
     ap.add_argument("--overwrite", action="store_true",
@@ -116,6 +119,7 @@ def main():
     with open(os.path.join(args.out_dir, "run_config.json"), "w") as f:
         json.dump(config, f, indent=2)
 
+    model = None
     if todo:
         model = load_model(args)
         for in_path, scale, raw_path in todo:
@@ -123,13 +127,28 @@ def main():
             run_inference(in_path=in_path, out_path=raw_path, mol=model,
                           batch_size=args.batch_size, max_length=args.max_length,
                           chat_template=True, system_prompt=args.system_prompt,
-                          enable_thinking=args.enable_thinking, scale=scale)
+                          enable_thinking=args.enable_thinking, scale=scale,
+                          choice_joiner=args.choice_joiner)
+        model.shutdown()  # free the GPU before postprocessing (see exit_cleanly)
 
+    incomplete = []
     for in_path, _ in jobs:
         name = os.path.basename(in_path)
         postprocess.run(in_path=os.path.join(raw_dir, name),
                         out_path=os.path.join(processed_dir, name), force=True)
+        n_in = count_lines(in_path)
+        n_raw = count_lines(os.path.join(raw_dir, name))
+        n_processed = count_lines(os.path.join(processed_dir, name))
+        if not n_in == n_raw == n_processed:
+            incomplete.append(f"{name}: input {n_in}, raw {n_raw}, processed {n_processed} lines")
+
+    # The exit code reflects the outputs, so the sequential runner reports real failures only.
+    if incomplete:
+        print("INCOMPLETE OUTPUTS:\n  " + "\n  ".join(incomplete), flush=True)
+        return 1
+    print(f"All {len(jobs)} files complete.", flush=True)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    exit_cleanly(code=main())  # the model is already shut down inside main()

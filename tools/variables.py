@@ -9,7 +9,7 @@ SCALES: dict[str, list[str]] = {
     "likely": ["very unlikely that", "unlikely that", "likely that", "very likely that"],
     "typical": ["very atypical that", "atypical that", "typical that", "very typical that"],
     "probable": ["very improbable that", "improbable that", "probable that", "very probable that"],
-    # Bare adverbs, no "it is ... that": use with the *_forsurprisal_often.jsonl inputs, whose
+    # Bare adverbs, no "it is ... that": use with the *_forbasemodels_often.jsonl inputs, whose
     # contexts have "it is " removed (llm-structured-inference/data_processing/make_often_surprisal_input.py),
     # e.g. "In general, when X, " + "very often" + " Y happens."
     "often": ["very rarely", "rarely", "often", "very often"],

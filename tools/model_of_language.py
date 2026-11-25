@@ -106,6 +106,52 @@ def print_sentence(sentence: Sentence, show_values: bool = False, max_list_items
     print(sentence.pretty(show_values=show_values, max_list_items=max_list_items))
 
 
+ROUND_TRIP_PROBE = "In general, when someone buys a pack"
+
+
+def check_round_trip(tokenizer, model_key: str):
+    """Make sure the tokenizer keeps spaces; if not, reload it from the checkpoint's tokenizer.json.
+
+    With transformers 5.x, AutoTokenizer loads deepseek-llm-7b-chat (tokenizer_config.json says
+    "LlamaTokenizer") as a SentencePiece-style tokenizer that drops every space:
+    "In general, when someone buys" -> "Ingeneral,whensomeonebuys". Its tokenizer.json is a
+    byte-level BPE that is correct, and PreTrainedTokenizerFast loads it as is.
+    """
+    ids = tokenizer(ROUND_TRIP_PROBE, add_special_tokens=False)["input_ids"]
+    if tokenizer.decode(ids).strip() == ROUND_TRIP_PROBE:
+        return tokenizer
+    from transformers import PreTrainedTokenizerFast
+    print(f"WARNING: {type(tokenizer).__name__} for {model_key} does not round-trip "
+          f"{ROUND_TRIP_PROBE!r} (got {tokenizer.decode(ids)!r}); reloading tokenizer.json "
+          f"with PreTrainedTokenizerFast")
+    fast = PreTrainedTokenizerFast.from_pretrained(model_key)
+    ids = fast(ROUND_TRIP_PROBE, add_special_tokens=False)["input_ids"]
+    if fast.decode(ids).strip() != ROUND_TRIP_PROBE:
+        raise ValueError(f"No tokenizer for {model_key} round-trips {ROUND_TRIP_PROBE!r}: "
+                         f"got {fast.decode(ids)!r}")
+    return fast
+
+
+def avoid_mistral_common(tokenizer, model_key: str):
+    """Use the checkpoint's tokenizer.json + chat_template.jinja instead of mistral-common.
+
+    With transformers 5.x, AutoTokenizer loads Mistral checkpoints that ship a tekken.json
+    (e.g. Ministral-3-*-Instruct-2512) as MistralCommonBackend. That class has no
+    .chat_template, so --chat-template runs stop with "has no chat template", and it encodes
+    "[INST]" etc. in a rendered prompt as plain text rather than as special tokens.
+    PreTrainedTokenizerFast reads the same vocabulary from tokenizer.json and the folder's
+    chat_template.jinja; on the forced-choice inputs its ids for prompt + choice are identical to
+    mistral-common's apply_chat_template. fix_mistral_regex=True as transformers recommends for
+    these tokenizer.json files.
+    """
+    if type(tokenizer).__name__ != "MistralCommonBackend":
+        return tokenizer
+    from transformers import PreTrainedTokenizerFast
+    print(f"NOTE: {model_key} loaded as MistralCommonBackend; reloading tokenizer.json with "
+          f"PreTrainedTokenizerFast(fix_mistral_regex=True) to use its chat_template.jinja")
+    return PreTrainedTokenizerFast.from_pretrained(model_key, fix_mistral_regex=True)
+
+
 class ModelOfLanguage:
     backend = "hf"
 
@@ -200,6 +246,8 @@ class ModelOfLanguage:
             tokenizer = AutoTokenizer.from_pretrained(self.model_key)
         except ValueError:
             raise ValueError(f"Model {self.model_key} not found")
+        tokenizer = avoid_mistral_common(tokenizer, self.model_key)
+        tokenizer = check_round_trip(tokenizer, self.model_key)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
         return tokenizer
@@ -293,6 +341,10 @@ class ModelOfLanguage:
                 "surprisal": measures["surprisal"][i+1],
             }
         return sentence
+
+    def shutdown(self) -> None:
+        # nothing to stop for the transformers backend (the vLLM backend overrides this)
+        pass
 
     def get_measures_for_sentences(self, sentences: list[Sentence]) -> list[Sentence]:
         # One sentence at a time; the vLLM backend overrides this to score them all at once.
